@@ -2,6 +2,24 @@ import json
 import math
 from nba_api.stats.endpoints import boxscoretraditionalv2
 
+teamID = {
+    "Pacers": 1610612754,
+    "Cavs": 1610612739,
+    "Warriors": 1610612744,
+    "OKC": 1610612760,
+}
+
+def loadGameIDs(teamName):
+    pathName = f"assShot{teamName}.json"
+    with open(pathName) as f:
+        data = json.load(f)
+        
+    gameIDs = set()
+    for play in data['results']:
+        gameIDs.add(play['gid'])
+
+    return sorted(list(gameIDs))
+
 
 def loadAssShots(pathName, gameID):
     with open(pathName) as f:

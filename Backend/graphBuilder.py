@@ -1,9 +1,17 @@
 from DAG import Graph
 from dataHandler import loadAssShots, loadPlayerPts
 
-def buildGraph(game_id, team_id):
-    plays = loadAssShots("assShotPacers.json", game_id)
-    playerPts = loadPlayerPts(team_id, game_id)
+teamID = {
+    "Pacers": 1610612754,
+    "Cavs": 1610612739,
+    "Warriors": 1610612744,
+    "OKC": 1610612760,
+}
+
+def buildGraph(game_id, teamName):
+    path = f"assShot{teamName}.json"
+    plays = loadAssShots(path, game_id)
+    playerPts = loadPlayerPts(teamID[teamName], game_id)
 
     names = set(playerPts.keys())
     for play in plays:

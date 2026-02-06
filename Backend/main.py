@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from graphBuilder import buildGraph
+from dataHandler import loadGameIDs
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -15,9 +16,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/gameIDsPerTeam")
+def get_gameIDs(teamName:str):
+    return loadGameIDs(teamName)
+
+
+
 @app.get("/graph")
-def get_graph(game_id: str, team_id: int, min_edge_weight: int = 1):
-    graph = buildGraph(game_id, team_id)
+def get_graph(game_id: str, teamName: str, min_edge_weight: int = 1):
+    graph = buildGraph(game_id, teamName)
     app.state.graph = graph
     app.state.min_edge_weight = min_edge_weight
     snapshot = graph.graph_snapshot(minEdgeWeight=min_edge_weight)

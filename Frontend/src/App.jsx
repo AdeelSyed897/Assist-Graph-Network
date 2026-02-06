@@ -5,8 +5,6 @@ import * as d3 from "d3-force";
 
 const DEFAULTS = {
   backendBaseUrl: "http://127.0.0.1:8000",
-  gameId: "0042400306",
-  teamId: "1610612754",
   minEdgeWeight: 1,
 };
 
@@ -31,13 +29,20 @@ const PALETTE = {
   edgeFaded: "rgba(148,163,184,0.10)",
 };
 
+const TEAMS = ["Pacers", "Cavs", "Warriors", "OKC"];
+
 export default function App() {
   const fgRef = useRef(null);
 
   const [backendBaseUrl, setBackendBaseUrl] = useState(DEFAULTS.backendBaseUrl);
-  const [gameId, setGameId] = useState(DEFAULTS.gameId);
-  const [teamId, setTeamId] = useState(DEFAULTS.teamId);
   const [minEdgeWeight, setMinEdgeWeight] = useState(DEFAULTS.minEdgeWeight);
+
+  // Default to Pacers (or any team you prefer)
+  const [team, setTeam] = useState("Pacers");
+  const [gameList, setGameList] = useState([]);
+  const [gameId, setGameId] = useState("");
+  const [gameListLoading, setGameListLoading] = useState(false);
+  const [gameListError, setGameListError] = useState("");
 
   const [data, setData] = useState({ nodes: [], links: [] });
   const [loading, setLoading] = useState(false);
@@ -81,13 +86,37 @@ export default function App() {
     return () => { cancelled = true; };
   }, [activeId, backendBaseUrl]);
 
+  // When team changes, fetch game IDs
+  useEffect(() => {
+    if (!team) {
+      setGameList([]);
+      setGameId("");
+      setGameListError("");
+      return;
+    }
+    setGameListLoading(true);
+    setGameListError("");
+    setGameList([]);
+    setGameId("");
+    fetch(`${backendBaseUrl}/gameIDsPerTeam?teamName=${encodeURIComponent(team)}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Backend error: ${res.status} ${res.statusText}`);
+        const json = await res.json();
+        setGameList(Array.isArray(json) ? json : []);
+      })
+      .catch((e) => setGameListError(e?.message || "Failed to fetch game IDs"))
+      .finally(() => setGameListLoading(false));
+  }, [team, backendBaseUrl]);
+
+  // Only fetch graph if both team and gameId are set
   const fetchGraph = async () => {
+    if (!team || !gameId) return;
     setLoading(true);
     setErr("");
     try {
       const url = new URL("/graph", backendBaseUrl);
       url.searchParams.set("game_id", gameId);
-      url.searchParams.set("team_id", teamId);
+      url.searchParams.set("teamName", team);
       url.searchParams.set("min_edge_weight", String(minEdgeWeight));
 
       const res = await fetch(url.toString());
@@ -123,9 +152,10 @@ export default function App() {
     }
   };
 
+  // Only auto-load graph if both team and gameId are set
   useEffect(() => {
-    fetchGraph();
-  }, []);
+    if (team && gameId) fetchGraph();
+  }, [team, gameId, minEdgeWeight]);
 
   useEffect(() => {
     if (!fgRef.current) return;
@@ -198,6 +228,21 @@ export default function App() {
     document.head.appendChild(style);
   }
 
+  // UI: Team selection, then graph UI (game selection always available in sidebar)
+  if (!team) {
+    return (
+      <div style={{...styles.page, alignItems: "center", justifyContent: "center", display: "flex"}}>
+        <div style={{ background: PALETTE.cardBg, padding: 32, borderRadius: 16, border: `1px solid ${PALETTE.cardBorder}` }}>
+          <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 18 }}>Select a Team</div>
+          <select style={{...styles.input, fontSize: 16}} value={team} onChange={e => setTeam(e.target.value)}>
+            <option value="">-- Choose Team --</option>
+            {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{...styles.page, gridTemplateColumns: "340px 1fr"}}>
       {/* Left Sidebar */}
@@ -206,6 +251,30 @@ export default function App() {
         <div style={styles.subTitle}>
           Hover a node to inspect outgoing/incoming edges + weights. Click to lock.
         </div>
+        <div style={styles.subTitle}>
+          Choose between the 2025 OKC / Pacers or the 2016 Cavs / Warriors Playoff Run
+        </div>
+
+        {/* Team/game selection always available */}
+        <div style={styles.formRow}>
+          <label style={styles.label}>Team</label>
+          <select style={styles.input} value={team} onChange={e => setTeam(e.target.value)}>
+            <option value="">-- Choose Team --</option>
+            {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div style={styles.formRow}>
+          <label style={styles.label}>Game ID</label>
+          {gameListLoading ? <div style={{fontSize:12, marginBottom:4}}>Loading games…</div> : null}
+          {gameListError ? <div style={{color: PALETTE.inEdge, fontSize:12, marginBottom:4}}>{gameListError}</div> : null}
+          <select style={styles.input} value={gameId} onChange={e => setGameId(e.target.value)} disabled={gameListLoading || !gameList.length}>
+            <option value="">-- Choose Game ID --</option>
+            {gameList.map(gid => <option key={gid} value={gid}>{gid}</option>)}
+          </select>
+        </div>
+        <button style={styles.button} onClick={fetchGraph} disabled={!gameId || loading || gameListLoading}>
+          {loading ? "Loading..." : "Load Graph"}
+        </button>
 
         {/* Player Stats Panel (moved to top of sidebar) */}
         {activeId ? (
@@ -236,11 +305,8 @@ export default function App() {
 
         <div style={styles.inspector}>
           <div style={styles.inspectorHeader}>
-            <div style={{ fontWeight: 800 }}>
-              {activeId ? `Inspecting: ${activeId}` : "Edge Inspector"}
-            </div>
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              {activeId ? "Outgoing is cyan, incoming is rose." : "Hover or click a node to see edge weights."}
+              {activeId ? "Outgoing is blue, incoming is red." : "Hover or click a node to see edge weights."}
             </div>
           </div>
 
@@ -290,16 +356,6 @@ export default function App() {
         </div>
 
         <div style={styles.formRow}>
-          <label style={styles.label}>Game ID</label>
-          <input style={styles.input} value={gameId} onChange={(e) => setGameId(e.target.value)} />
-        </div>
-
-        <div style={styles.formRow}>
-          <label style={styles.label}>Team ID</label>
-          <input style={styles.input} value={teamId} onChange={(e) => setTeamId(e.target.value)} />
-        </div>
-
-        <div style={styles.formRow}>
           <label style={styles.label}>Min Edge Weight</label>
           <input
             style={styles.input}
@@ -308,12 +364,6 @@ export default function App() {
             onChange={(e) => setMinEdgeWeight(Number(e.target.value))}
           />
         </div>
-
-        <button style={styles.button} onClick={fetchGraph} disabled={loading}>
-          {loading ? "Loading..." : "Load Graph"}
-        </button>
-
-        {err ? <div style={styles.error}>⚠️ {err}</div> : null}
 
         <div style={styles.stats}>
           <div><b>Nodes:</b> {data.nodes?.length || 0}</div>
